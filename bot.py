@@ -23,7 +23,7 @@ RED         = 0xEF4444
 GREEN       = 0x22C55E
 
 # ══════════════════════════════════════════════════════
-#   DATABASE
+#   DATABASE SYSTEM
 # ══════════════════════════════════════════════════════
 def load_db():
     if not os.path.exists(TICKET_DB):
@@ -72,7 +72,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ══════════════════════════════════════════════════════
-#   MODALS
+#   DYNAMIC CUSTOM MODALS
 # ══════════════════════════════════════════════════════
 class MCHelpModal(discord.ui.Modal, title="⛏️ Minecraft Help"):
     mc_username = discord.ui.TextInput(label="Your Minecraft Username", placeholder="e.g. Steve123", max_length=50)
@@ -117,13 +117,14 @@ class SOSModal(discord.ui.Modal, title="🆘 SOS Emergency"):
         })
 
 # ══════════════════════════════════════════════════════
-#   CREATE TICKET
+#   CREATE TICKET FUNCTION (WITH AUTO TAGGING)
 # ══════════════════════════════════════════════════════
 async def create_ticket(interaction, ticket_type, color, fields):
     await interaction.response.defer(ephemeral=True)
     guild  = interaction.guild
     member = interaction.user
 
+    # Anti-spam: check if already has an open ticket
     existing = get_open_ticket(member.id)
     if existing:
         ch = guild.get_channel(existing["channel_id"])
@@ -138,11 +139,11 @@ async def create_ticket(interaction, ticket_type, color, fields):
 
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        member:             discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+        member:             discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, attach_files=True, embed_links=True),
         guild.me:           discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
     }
     if staff_role:
-        overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_messages=True)
+        overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_messages=True, attach_files=True, embed_links=True)
 
     category  = guild.get_channel(TICKET_CATEGORY_ID)
     ticket_ch = await guild.create_text_channel(
@@ -171,16 +172,19 @@ async def create_ticket(interaction, ticket_type, color, fields):
     )
     embed.set_author(name=member.display_name, icon_url=member.display_avatar.url if member.display_avatar else None)
     for k, v in fields.items():
-        embed.add_field(name=k, value=f"```{v}```", inline=False)
+        embed.add_field(name=k, value=f"```\n{v}\n```", inline=False)
     embed.set_footer(text="⚔️ AFFCONQUER  •  Use button below to close",
                      icon_url=guild.icon.url if guild.icon else None)
 
+    # Automatically mentions/tags the User and Staff Role upon creation
+    tag_content = f"{member.mention} {staff_role.mention if staff_role else ''}"
     await ticket_ch.send(
-        content=f"{member.mention} {staff_role.mention if staff_role else ''}",
+        content=tag_content,
         embed=embed,
         view=CloseTicketView()
     )
 
+    # Log inside mod logs channel
     log_ch = guild.get_channel(MOD_LOG_CHANNEL_ID)
     if log_ch:
         log_embed = discord.Embed(title="🎫 New Ticket Opened", color=color, timestamp=datetime.now(timezone.utc))
@@ -194,7 +198,7 @@ async def create_ticket(interaction, ticket_type, color, fields):
     print(f"[TICKET] {member} opened {ticket_type} → {ticket_ch.name}")
 
 # ══════════════════════════════════════════════════════
-#   CLOSE BUTTON
+#   CLOSE TICKET CONTROL PANEL
 # ══════════════════════════════════════════════════════
 class CloseTicketView(discord.ui.View):
     def __init__(self):
@@ -207,7 +211,7 @@ class CloseTicketView(discord.ui.View):
         staff_role = discord.utils.get(guild.roles, name=STAFF_ROLE_NAME)
         is_staff   = staff_role in member.roles if staff_role else False
 
-        # Find owner dynamically from DB via Channel ID
+        # Dynamic validation via database checks to safely allow owner or management to close
         db = load_db()
         owner_id = None
         for uid, tickets in db.items():
@@ -233,7 +237,7 @@ class CloseTicketView(discord.ui.View):
 
         log_ch = guild.get_channel(MOD_LOG_CHANNEL_ID)
         if log_ch:
-            log_embed = discord.Embed(title="🔒 Ticket Closed", color=RED, timestamp=datetime.utcnow())
+            log_embed = discord.Embed(title="🔒 Ticket Closed", color=RED, timestamp=datetime.now(timezone.utc))
             log_embed.add_field(name="Channel",   value=interaction.channel.name, inline=True)
             log_embed.add_field(name="Closed By", value=member.mention,           inline=True)
             if owner_id:
@@ -247,7 +251,7 @@ class CloseTicketView(discord.ui.View):
             pass
 
 # ══════════════════════════════════════════════════════
-#   TICKET PANEL
+#   TICKET SELECTION PANEL
 # ══════════════════════════════════════════════════════
 class TicketPanelView(discord.ui.View):
     def __init__(self):
@@ -266,7 +270,7 @@ class TicketPanelView(discord.ui.View):
         await interaction.response.send_modal(SOSModal())
 
 # ══════════════════════════════════════════════════════
-#   !setup_tickets COMMAND
+#   !setup_tickets COMMAND SYSTEM
 # ══════════════════════════════════════════════════════
 @bot.command(name="setup_tickets")
 @commands.has_permissions(administrator=True)
@@ -275,6 +279,7 @@ async def setup_tickets(ctx):
     if not channel:
         await ctx.send("❌ open-a-ticket channel not found.", delete_after=5)
         return
+        
     embed = discord.Embed(
         title="🎫 AFFCONQUER Support",
         description=(
@@ -291,12 +296,13 @@ async def setup_tickets(ctx):
     )
     embed.set_footer(text="⚔️ AFFCONQUER  •  The grind never stops",
                      icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
+                     
     await channel.send(embed=embed, view=TicketPanelView())
     await ctx.message.delete()
-    print("[SETUP] Ticket panel sent.")
+    print("[SETUP] Ticket panel sent successfully.")
 
 # ══════════════════════════════════════════════════════
-#   /info SLASH COMMAND
+#   SLASH COMMAND FOR DEV MODERATION (/info)
 # ══════════════════════════════════════════════════════
 @bot.tree.command(name="info", description="[DEV] View past tickets of a user")
 @app_commands.checks.has_permissions(manage_guild=True)
@@ -327,6 +333,7 @@ async def info_cmd(interaction: discord.Interaction, username: str):
         color=PURPLE, timestamp=datetime.now(timezone.utc)
     )
     embed.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
+    
     for i, t in enumerate(tickets[-10:], 1):
         icon   = "🟢" if t["status"] == "open" else "🔴"
         opened = t["opened_at"][:10]
@@ -334,16 +341,17 @@ async def info_cmd(interaction: discord.Interaction, username: str):
         if closed != "—":
             closed = closed[:10]
         embed.add_field(name=f"{icon} #{i} — {t['type']}", value=f"Opened: `{opened}` | Closed: `{closed}`", inline=False)
+        
     embed.set_footer(text=f"User ID: {member.id}  •  Last 10 tickets")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ══════════════════════════════════════════════════════
-#   ON READY
+#   ON READY (PERSISTENT BUTTON REGISTRATION)
 # ══════════════════════════════════════════════════════
 @bot.event
 async def on_ready():
     bot.add_view(TicketPanelView())
-    bot.add_view(CloseTicketView()) # Upgraded persistent structure without pinning dynamic ID
+    bot.add_view(CloseTicketView()) # Restored correctly without structural initialization mismatch
     await bot.tree.sync()
     print(f"\n  ⚔️  AFFCONQUER Ticket Bot online  |  {bot.user}")
     print(f"  👑  Servers: {len(bot.guilds)}")
@@ -352,158 +360,4 @@ async def on_ready():
         activity=discord.Activity(type=discord.ActivityType.watching, name="tickets 🎫 | AFFCONQUER")
     )
 
-bot.run(TOKEN)import discord
-from discord.ext import commands
-import os
-import asyncio
-
-# 1. Gateway Intents Setup
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Configuration Constants
-STAFF_ROLE_NAME = "🎖️ ᴄᴏɴǫᴜᴇʀᴏʀ"
-PURPLE_COLOR = discord.Color.purple()
-
-# ----------------------------------------------------
-# 2. Main Ticket Panel View (Jo !setup chalane par dikhega)
-# ----------------------------------------------------
-class TicketControlView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None) # Persistent view
-
-    @discord.ui.button(label="📩 Open Support Ticket", style=discord.ButtonStyle.secondary, custom_id="create_ticket_btn")
-    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # User ko 3 choices (suggestions) dene ke liye dropdown menu bhejega
-        dropdown_view = TicketDropdownView()
-        await interaction.response.send_message("Please select the department for your ticket:", view=dropdown_view, ephemeral=True)
-
-# ----------------------------------------------------
-# 3. Dropdown Menu for 3 Ticket Department Options
-# ----------------------------------------------------
-class TicketDropdown(discord.ui.Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="General Support", description="For general queries and assistance.", emoji="💬"),
-            discord.SelectOption(label="Billing & Purchase", description="For store or donation related issues.", emoji="💳"),
-            discord.SelectOption(label="Report Player/Bug", description="Report a cheater or a technical bug.", emoji="🐛")
-        ]
-        super().__init__(placeholder="Choose the ticket category...", min_values=1, max_values=1, options=options, custom_id="ticket_select_menu")
-
-    async def callback(self, interaction: discord.Interaction):
-        guild = interaction.guild
-        member = interaction.user
-        selected_option = self.values[0]
-        
-        staff_role = discord.utils.get(guild.roles, name=STAFF_ROLE_NAME)
-        
-        # Private channel permissions configuration
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            member: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, attach_files=True, embed_links=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_channels=True)
-        }
-        
-        if staff_role:
-            overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, attach_files=True, embed_links=True)
-
-        # Selected category ke mutabik channel prefix change hoga
-        prefix = "general"
-        if "Billing" in selected_option:
-            prefix = "billing"
-        elif "Report" in selected_option:
-            prefix = "report"
-
-        channel_name = f"{prefix}-{member.name.lower()}"
-        ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
-        
-        await interaction.response.send_message(f"✅ Your {selected_option} ticket has been created: {ticket_channel.mention}", ephemeral=True)
-        
-        # Triple-quotes use kiya hai multi-line bug fix karne ke liye
-        embed = discord.Embed(
-            title=f"⚔️ {selected_option.upper()} TICKET OPENED",
-            description=f"""Welcome {member.mention},
-Our staff ({STAFF_ROLE_NAME}) will assist you shortly. Please describe your issue in detail.""",
-            color=PURPLE_COLOR
-        )
-        embed.set_footer(text="AFFCONQUER Ticket Management")
-        
-        inside_view = InsideTicketView()
-        await ticket_channel.send(content=f"{member.mention} | Support Team", embed=embed, view=inside_view)
-
-class TicketDropdownView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=60)
-        self.add_item(TicketDropdown())
-
-# ----------------------------------------------------
-# 4. Inside Ticket View Controls (Lock, Unlock, Close)
-# ----------------------------------------------------
-class InsideTicketView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="🔒 Lock Chat", style=discord.ButtonStyle.secondary, custom_id="lock_ticket_btn")
-    async def lock_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        for target in interaction.channel.overwrites:
-            if isinstance(target, discord.Member) and target != interaction.guild.me:
-                await interaction.channel.set_permissions(target, send_messages=False, view_channel=True)
-        await interaction.response.send_message("🔒 **Ticket Locked.** Member can no longer send messages.", ephemeral=False)
-
-    @discord.ui.button(label="🔓 Unlock Chat", style=discord.ButtonStyle.success, custom_id="unlock_ticket_btn")
-    async def unlock_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        for target in interaction.channel.overwrites:
-            if isinstance(target, discord.Member) and target != interaction.guild.me:
-                await interaction.channel.set_permissions(target, send_messages=True, view_channel=True)
-        await interaction.response.send_message("🔓 **Ticket Unlocked.** Member can send messages again.", ephemeral=False)
-
-    @discord.ui.button(label="❌ Close Ticket", style=discord.ButtonStyle.danger, custom_id="close_ticket_btn")
-    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("⚙️ Closing this ticket in 5 seconds...", ephemeral=False)
-        await asyncio.sleep(5)
-        await interaction.channel.delete()
-
-# ----------------------------------------------------
-# 5. Bot Events & Setup Command
-# ----------------------------------------------------
-@bot.event
-async def on_ready():
-    # Persistent views registration
-    bot.add_view(TicketControlView())
-    bot.add_view(InsideTicketView())
-    print(f"⚔️  AFFCONQUER Ticket Bot online  |  {bot.user.name}#{bot.user.discriminator if bot.user.discriminator != '0' else ''}")
-    print(f"👑  Servers: {len(bot.guilds)}")
-    print("🎫  Ready and listening for commands.")
-
-@bot.command(name="setup")
-@commands.has_permissions(administrator=True)
-async def setup_panel(ctx):
-    await ctx.message.delete()
-    
-    embed = discord.Embed(
-        title="⚔️ AFFCONQUER SUPPORT TICKET",
-        description=f"""Click the button below to open a support ticket.
-Our staff will assist you shortly!""",
-        color=PURPLE_COLOR
-    )
-    embed.set_footer(text="ᴄᴏɴǫᴜᴇʀ TICKET SYSTEM")
-    
-    view = TicketControlView()
-    await ctx.send(embed=embed, view=view)
-
-# Error handling for missing permissions
-@setup_panel.error
-async def setup_panel_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ You don't have Administrator permissions to run this command.", delete_after=5)
-
-# Token loading - update via Environment Variable or insert here safely
-TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
-
-if __name__ == "__main__":
-    if TOKEN == "YOUR_BOT_TOKEN_HERE":
-        print("⚠️ Please replace 'YOUR_BOT_TOKEN_HERE' with your real Discord Bot Token, or set it via Railway Environment Variables.")
-    bot.run(TOKEN)
+bot.run(TOKEN)
