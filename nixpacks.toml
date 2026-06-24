@@ -1,0 +1,9 @@
+[phases.install]
+cmds = [
+  "pip install --upgrade pip",
+  "pip uninstall -y discord discord.py || true",
+  "pip install py-cord==2.6.1 --force-reinstall --no-cache-dir"
+]
+
+[start]
+cmd = "python bot.py"
