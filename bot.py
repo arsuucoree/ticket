@@ -81,12 +81,13 @@ class MCHelpModal(discord.ui.Modal, title="⛏️ Minecraft Help"):
     urgency     = discord.ui.TextInput(label="Urgency (ASAP / Today / No Rush)", placeholder="e.g. ASAP", max_length=50)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await create_ticket(interaction, "⛏️ MC Help", GREEN, {
+        fields_dict = {
             "MC Username" : self.mc_username.value,
             "Issue"       : self.issue.value,
             "SMP / Server": self.server_name.value,
-            "Urgency"     : self.urgency.value,
-        })
+            "Urgency"     : self.urgency.value
+        }
+        await create_ticket(interaction, "⛏️ MC Help", GREEN, fields_dict)
 
 class DiscordHelpModal(discord.ui.Modal, title="💬 Discord Help"):
     discord_tag = discord.ui.TextInput(label="Your Discord Username", placeholder="e.g. kushff007", max_length=100)
@@ -95,4 +96,25 @@ class DiscordHelpModal(discord.ui.Modal, title="💬 Discord Help"):
     urgency     = discord.ui.TextInput(label="Urgency (ASAP / Today / No Rush)", placeholder="e.g. Today", max_length=50)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await create_ticket(interaction,
+        fields_dict = {
+            "Discord Username" : self.discord_tag.value,
+            "Issue"            : self.issue.value,
+            "Channel / Feature": self.channel.value or "Not specified",
+            "Urgency"          : self.urgency.value
+        }
+        await create_ticket(interaction, "💬 Discord Help", PURPLE, fields_dict)
+
+class SOSModal(discord.ui.Modal, title="🆘 SOS Emergency"):
+    your_name = discord.ui.TextInput(label="Your Username (MC or Discord)", placeholder="e.g. kushff007", max_length=100)
+    emergency = discord.ui.TextInput(label="What Is the Emergency?", style=discord.TextStyle.paragraph, placeholder="Describe fast and clearly...", max_length=1000)
+    proof     = discord.ui.TextInput(label="Proof / Evidence (link or describe)", placeholder="screenshot link, video...", required=False, max_length=500)
+    accused   = discord.ui.TextInput(label="Who Is Involved?", placeholder="e.g. griefer username", required=False, max_length=200)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        fields_dict = {
+            "Reporter" : self.your_name.value,
+            "Emergency": self.emergency.value,
+            "Proof"    : self.proof.value or "None provided",
+            "Involved" : self.accused.value or "Not specified"
+        }
+        await
