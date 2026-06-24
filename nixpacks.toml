@@ -1,0 +1,8 @@
+[phases.install]
+cmds = [
+  "pip install --upgrade pip",
+  "pip install discord.py==2.3.2 --force-reinstall --no-cache-dir"
+]
+
+[start]
+cmd = "python bot.py"
