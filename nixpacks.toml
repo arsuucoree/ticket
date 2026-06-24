@@ -1,8 +1,0 @@
-[phases.install]
-cmds = [
-  "pip uninstall -y discord.py discord || true",
-  "pip install py-cord==2.6.1"
-]
-
-[start]
-cmd = "python bot.py"
